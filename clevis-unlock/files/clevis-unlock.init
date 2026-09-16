@@ -1,0 +1,61 @@
+#!/bin/sh /etc/rc.common
+
+START=95
+USE_PROCD=1
+
+validate_device_section() {
+	uci_validate_section clevis-unlock device "$1" \
+		'enabled:bool:0' \
+		'uuid:string' \
+		'name:string'
+}
+
+unlock_single_device() {
+	local uuid="$1"
+	local name="$2"
+	local dev_path="/dev/disk/by-uuid/$uuid"
+
+	# Wait up to 15 seconds for the physical disk to appear
+	local attempts=0
+	while [ ! -b "$dev_path" ] && [ $attempts -lt 15 ]; do
+		sleep 1
+		attempts=$((attempts + 1))
+	done
+
+	if [ ! -b "$dev_path" ]; then
+		logger -t clevis-unlock "Error: Device with UUID $uuid not found."
+		return 1
+	fi
+
+	# Check if already unlocked
+	if [ -b "/dev/mapper/$name" ]; then
+		logger -t clevis-unlock "Device $name is already unlocked."
+		return 0
+	fi
+
+	logger -t clevis-unlock "Attempting to unlock UUID $uuid as $name..."
+	
+	# Run clevis luks unlock
+	if clevis luks unlock -d "$dev_path" -n "$name" < /dev/null; then
+		logger -t clevis-unlock "Successfully unlocked $name."
+	else
+		logger -t clevis-unlock "Failed to unlock $name."
+	fi
+}
+
+process_device() {
+	local config="$1"
+	local enabled uuid name
+
+	validate_device_section "$config" || return 1
+	[ "$enabled" = "0" ] && return 0
+	[ -z "$uuid" ] || [ -z "$name" ] && return 1
+
+	# Run the unlocking function in the background to ensure non-blocking boot
+	unlock_single_device "$uuid" "$name" &
+}
+
+start_service() {
+	config_load clevis-unlock
+	config_foreach process_device device
+}
