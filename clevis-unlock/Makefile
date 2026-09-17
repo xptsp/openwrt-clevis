@@ -13,7 +13,7 @@ define Package/clevis-unlock
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=Automated non-blocking Clevis LUKS unlocker
-  DEPENDS:=+clevis +cryptsetup +uuidgen
+  DEPENDS:=+clevis +cryptsetup +uuidgen +clevis-luks
 endef
 
 define Package/clevis-unlock/description
