@@ -13,6 +13,8 @@ PKG_MAINTAINER:=OpenWrt Developer <dev@openwrt.org>
 PKG_LICENSE:=GPL-3.0-or-later
 PKG_LICENSE_FILES:=COPYING
 
+PKG_BUILD_DEPENDS:=libcryptsetup luksmeta jose jansson cryptsetup/host
+
 include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/meson.mk
 
@@ -21,14 +23,21 @@ define Package/clevis
   CATEGORY:=Utilities
   TITLE:=Automated Encryption Framework
   URL:=https://github.com/latchset/clevis
-  DEPENDS:=+jose +bash +coreutils +curl +luksmeta +cryptsetup
+  DEPENDS:=+jose +bash +coreutils +curl +luksmeta +cryptsetup +jansson
 endef
 
 define Package/clevis-luks
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=Clevis LUKS integration
-  DEPENDS:=+clevis +cryptsetup
+  DEPENDS:=+clevis +cryptsetup +luksmeta
+endef
+
+define Package/clevis-tpm2
+  SECTION:=utils
+  CATEGORY:=Utilities
+  TITLE:=Clevis TPM2 integration
+  DEPENDS:=+clevis +tpm2-tools +kmod-tpm +kmod-tpm-tis
 endef
 
 define Package/clevis/description
@@ -40,37 +49,48 @@ define Package/clevis-luks/description
   Provides LUKS disk binding and unlocking integration for Clevis.
 endef
 
-# Bypass the failing build script checks safely
+define Package/clevis-tpm2/description
+  Provides TPM2 binding and unlocking integration for Clevis.
+endef
+
 MESON_ARGS += \
 	-Dluksmeta_data:OLD_CRYPTSETUP=0
 
 define Build/Configure
-	# Empty out the test meson build instructions to stop the OLD_CRYPTSETUP crash 
-	# while keeping the parent directories fully functional and compiling!
 	echo "" > $(PKG_BUILD_DIR)/src/luks/tests/meson.build
 	$(call Build/Configure/Meson)
 endef
 
 define Package/clevis/install
 	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_DIR) $(1)/usr/libexec
-	
-	# Only copy core utilities and binaries
-	$(CP) $(PKG_INSTALL_DIR)/usr/bin/* $(1)/usr/bin/
-	
-	# Only copy libexec helpers if they exist
-	if [ -d $(PKG_INSTALL_DIR)/usr/libexec ]; then \
-		$(CP) $(PKG_INSTALL_DIR)/usr/libexec/* $(1)/usr/libexec/; \
-	fi
+	$(CP) $(PKG_INSTALL_DIR)/usr/bin/clevis $(1)/usr/bin/
+	$(CP) $(PKG_INSTALL_DIR)/usr/bin/clevis-decrypt $(1)/usr/bin/
+	$(CP) $(PKG_INSTALL_DIR)/usr/bin/clevis-decrypt-null $(1)/usr/bin/
+	$(CP) $(PKG_INSTALL_DIR)/usr/bin/clevis-decrypt-sss $(1)/usr/bin/
+	$(CP) $(PKG_INSTALL_DIR)/usr/bin/clevis-decrypt-tang $(1)/usr/bin/
+	$(CP) $(PKG_INSTALL_DIR)/usr/bin/clevis-encrypt-null $(1)/usr/bin/
+	$(CP) $(PKG_INSTALL_DIR)/usr/bin/clevis-encrypt-sss $(1)/usr/bin/
+	$(CP) $(PKG_INSTALL_DIR)/usr/bin/clevis-encrypt-tang $(1)/usr/bin/
 endef
 
 define Package/clevis-luks/install
-	# OpenWrt LUKS integration uses the unified 'clevis' command interface. 
-	# This block installs the internal LUKS plugins and helpers.
-	$(INSTALL_DIR) $(1)/usr/libexec/clevis
-	$(CP) $(PKG_INSTALL_DIR)/usr/libexec/clevis/luks* $(1)/usr/libexec/clevis/ 2>/dev/null || true
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(CP) $(PKG_BUILD_DIR)/src/luks/clevis-luks-bind $(1)/usr/bin/
+	$(CP) $(PKG_BUILD_DIR)/src/luks/clevis-luks-edit $(1)/usr/bin/
+	$(CP) $(PKG_BUILD_DIR)/src/luks/clevis-luks-list $(1)/usr/bin/
+	$(CP) $(PKG_BUILD_DIR)/src/luks/clevis-luks-pass $(1)/usr/bin/
+	$(CP) $(PKG_BUILD_DIR)/src/luks/clevis-luks-regen $(1)/usr/bin/
+	$(CP) $(PKG_BUILD_DIR)/src/luks/clevis-luks-report $(1)/usr/bin/
+	$(CP) $(PKG_BUILD_DIR)/src/luks/clevis-luks-unbind.in $(1)/usr/bin/clevis-luks-unbind
+	sed -i -e 's|@PATH@|/usr/bin:/bin|g' $(1)/usr/bin/clevis-luks-unbind
+endef
+
+define Package/clevis-tpm2/install
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(CP) $(PKG_INSTALL_DIR)/usr/bin/clevis-decrypt-tpm2 $(1)/usr/bin/
+	$(CP) $(PKG_INSTALL_DIR)/usr/bin/clevis-encrypt-tpm2 $(1)/usr/bin/
 endef
 
 $(eval $(call BuildPackage,clevis))
 $(eval $(call BuildPackage,clevis-luks))
-
+$(eval $(call BuildPackage,clevis-tpm2))
