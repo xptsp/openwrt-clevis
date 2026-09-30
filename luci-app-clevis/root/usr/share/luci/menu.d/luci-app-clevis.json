@@ -1,0 +1,13 @@
+{
+	"admin/services/clevis": {
+		"title": "Clevis Encryption",
+		"action": {
+			"type": "view",
+			"path": "clevis"
+		},
+		"order": 60,
+		"depends": {
+			"acl": [ "luci-app-clevis" ]
+		}
+	}
+}

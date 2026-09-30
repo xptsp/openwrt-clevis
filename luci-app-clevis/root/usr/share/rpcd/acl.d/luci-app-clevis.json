@@ -1,0 +1,14 @@
+{
+	"luci-app-clevis": {
+		"description": "Grant access to Clevis LuCI app",
+		"read": {
+			"uci": [ "clevis" ],
+			"file": {
+				"/usr/sbin/blkid": [ "exec" ]
+			}
+		},
+		"write": {
+			"uci": [ "clevis" ]
+		}
+	}
+}
