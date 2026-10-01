@@ -6,7 +6,7 @@ LUCI_PKGARCH:=all
 
 PKG_NAME:=luci-app-clevis
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=GPL-3.0-or-later
 
 include $(INCLUDE_DIR)/package.mk

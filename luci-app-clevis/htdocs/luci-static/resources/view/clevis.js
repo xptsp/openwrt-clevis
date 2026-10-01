@@ -1,117 +1,88 @@
 'use strict';
-/* sysauth: root */
+'use ui';
 
-'require form';
-'require fs';
-'require ui';
+// Statically pull required LuCI core modules
+var rpc = L.require('rpc');
+var ui = L.require('ui');
 
 return L.view.extend({
-	// Query the system blkid data natively to feed both drop-down combo box layers
+	// Fetch both the Form library and our live RPCD active mapper data concurrently
 	load: function() {
 		return Promise.all([
-			fs.exec('/usr/sbin/blkid').then(function(res) { return res.stdout || ''; }).catch(function() { return ''; })
+			L.resolveDefault(L.require('form')),
+			L.rpc.declare({
+				object: 'clevis',
+				method: 'status',
+				expect: { unlocked_mappers: [] }
+			})()
 		]);
 	},
 
 	render: function(data) {
-		// Unpack the blkid string output data from the promise response
-		var blkidData = data[0]; 
+		// Properly unpack Promise.all sequential indices
+		var form = data[0];
+		var unlockedMappers = data[1]; 
 		var m, s, o;
 
-		// Initialize the Map object cleanly using the form module dependency
-		m = new form.Map('clevis', _('Clevis Storage Unlocking'),
-			_('Configure automated cryptographic volume unlocking using Clevis at boot time.'));
+		m = new form.Map('clevis', _('Clevis Decryption'),
+			_('Configure automated cryptographic volume decryption utilizing Clevis metadata stanzas. Once unlocked, virtual devices appear inside /dev/mapper/ and can be natively assigned to mount paths under System ➔ Mount Points.'));
 
-		// Global Options Settings Section
+		// Global Timeout Config using TypedSection
 		s = m.section(form.TypedSection, 'global', _('Global Settings'));
 		s.anonymous = true;
 		s.addremove = false;
-		s.rmempty = false;
-
-		o = s.option(form.Value, 'network_timeout', _('Network Wait Timeout'),
-			_('Seconds to wait for an IP address before running decryption (critical if using remote Tang Servers).'));
-		o.datatype = 'uinteger';
-		o.placeholder = '30';
-		o.rmempty = false;
-
-		// Encrypted Drives Matrix Configuration Grid
-		s = m.section(form.GridSection, 'drive', _('Encrypted Volume Targets'));
-		s.addremove = true;
-		s.anonymous = true;
-
-		// Active Toggle Switch Flag Control
-		o = s.option(form.Flag, 'enabled', _('Enabled'));
-		o.rmempty = false;
-		o.default = '0';
-
-		// Editable Input text combo box setup targeting Drive UUIDs
-		o = s.option(form.Value, 'uuid', _('Drive UUID'),
-			_('Type or paste a custom UUID manually, or click the dropdown arrow to choose a detected partition.'));
-		o.widget = 'combobox'; 
-		o.datatype = 'string';
-		o.rmempty = true;
 		
-		// Parse lines for UUID dropdown data
-		var lines = blkidData.split('\n');
-		for (var i = 0; i < lines.length; i++) {
-			var line = lines[i];
-			var devMatch = line.match(/^([^:]+):/);
-			var uuidMatch = line.match(/UUID="([^"]+)"/);
-			
-			if (devMatch && uuidMatch) {
-				var devPath = devMatch[1];
-				var uuidVal = uuidMatch[1];
-				var labelMatch = line.match(/LABEL="([^"]+)"/);
-				var typeMatch = line.match(/TYPE="([^"]+)"/);
-				var labelText = labelMatch ? ' (' + labelMatch[1] + ')' : '';
-				var typeText = typeMatch ? ' [' + typeMatch[1] + ']' : '';
-				
-				o.value(uuidVal, uuidVal + ' - ' + devPath + labelText + typeText);
+		o = s.option(form.Value, 'network_timeout', _('Network Interface Timeout'), 
+			_('Seconds to block-wait for connectivity prior to firing pinning operations. Ideal for remote Tang hook definitions. (0 to disable)'));
+		o.datatype = 'uinteger';
+		o.default = '30';
+
+		// Drive Map Grid Section
+		s = m.section(form.GridSection, 'drive', _('Encrypted Volume Targets'));
+		s.anonymous = true;
+		s.addremove = true;
+
+		// LIVE STATUS BADGE COLUMN
+		o = s.option(form.DummyValue, '_status', _('Status'));
+		o.modalonly = false;
+
+		// Step A: Calculate the true status state string for this row section
+		o.cfgvalue = function(section_id) {
+			var mapperName = L.uci.get('clevis', section_id, 'mapper');
+			if (!mapperName) {
+				return 'unsaved';
 			}
-		}
+			return (unlockedMappers.indexOf(mapperName) !== -1) ? 'unlocked' : 'locked';
+		};
 
-		// FIXED: Converted Drive Label to an editable combo box input with automated label parsing
-		o = s.option(form.Value, 'label', _('Drive Label'),
-			_('Type a custom label manually, or click the dropdown arrow to choose a detected filesystem label.'));
-		o.widget = 'combobox';
-		o.datatype = 'string';
-		o.rmempty = true;
+		// Step B: Direct the table renderer on exactly how to display that value state string
+		o.textvalue = function(section_id) {
+			var state = this.cfgvalue(section_id);
 
-		// Parse lines for Label dropdown data
-		for (var i = 0; i < lines.length; i++) {
-			var line = lines[i];
-			var devMatch = line.match(/^([^:]+):/);
-			var labelMatch = line.match(/LABEL="([^"]+)"/);
-			
-			if (devMatch && labelMatch) {
-				var devPath = devMatch[1];
-				var labelVal = labelMatch[1];
-				var uuidMatch = line.match(/UUID="([^"]+)"/);
-				var typeMatch = line.match(/TYPE="([^"]+)"/);
-				var uuidText = uuidMatch ? ' (UUID: ' + uuidMatch[1] + ')' : '';
-				var typeText = typeMatch ? ' [' + typeMatch[1] + ']' : '';
-				
-				o.value(labelVal, labelVal + ' - ' + devPath + uuidText + typeText);
+			if (state === 'unlocked') {
+				return E('span', { 'class': 'label success', 'style': 'display:inline-block;' }, _('Unlocked 🔓'));
+			} else if (state === 'locked') {
+				return E('span', { 'class': 'label danger', 'style': 'display:inline-block;' }, _('Locked 🔒'));
+			} else {
+				return E('em', _('Unsaved Profile'));
 			}
-		}
+		};
 
-		// Mapper Output Layer Destination Property
-		o = s.option(form.Value, 'mapper', _('Mapper Name'),
-			_('The unlocked device name (accessible via /dev/mapper/NAME).'));
-		o.datatype = 'alnum';
+		// Toggle Profile State
+		o = s.option(form.Flag, 'enabled', _('Enabled'));
+		o.default = o.enabled;
+
+		// Virtual Device Mapper Moniker
+		o = s.option(form.Value, 'mapper', _('Mapper Moniker'));
 		o.rmempty = false;
 
-		// Storage Target Destination Mount Directory Parameters
-		o = s.option(form.Value, 'mount_point', _('Mount Point'),
-			_('Optional target directory destination path to mount the volume.'));
-		o.datatype = 'directory';
+		// Hardware Identity (UUID)
+		o = s.option(form.Value, 'uuid', _('Device UUID'));
+		o.rmempty = true;
 
-		o = s.option(form.ListValue, 'fstype', _('Filesystem Type'));
-		o.value('ext4', 'ext4');
-		o.value('btrfs', 'btrfs');
-		o.value('f2fs', 'f2fs');
-		o.value('xfs', 'xfs');
-		o.default = 'ext4';
+		// Alternative Label Identity
+		o = s.option(form.Value, 'label', _('Device Label'));
+		o.rmempty = true;
 
 		return m.render();
 	}

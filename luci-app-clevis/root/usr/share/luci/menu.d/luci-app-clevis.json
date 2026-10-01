@@ -1,11 +1,10 @@
 {
 	"admin/services/clevis": {
-		"title": "Clevis Encryption",
+		"title": "Clevis Decryption",
 		"action": {
 			"type": "view",
 			"path": "clevis"
 		},
-		"order": 60,
 		"depends": {
 			"acl": [ "luci-app-clevis" ]
 		}

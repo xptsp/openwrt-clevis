@@ -1,10 +1,10 @@
 {
 	"luci-app-clevis": {
-		"description": "Grant access to Clevis LuCI app",
+		"description": "Grant UCI and Ubus access to Clevis monitoring tools",
 		"read": {
 			"uci": [ "clevis" ],
-			"file": {
-				"/usr/sbin/blkid": [ "exec" ]
+			"ubus": {
+				"clevis": [ "status" ]
 			}
 		},
 		"write": {

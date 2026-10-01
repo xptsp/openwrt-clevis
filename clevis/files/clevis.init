@@ -4,6 +4,9 @@
 START=95
 USE_PROCD=1
 
+EXTRA_COMMANDS="worker"
+EXTRA_HELP="        worker   Non-blocking worker for mounting encrypted LUKS partitions"
+
 # Helper function to dynamically locate device path by UUID or LABEL without /dev/disk/by-uuid
 find_device() {
 	local uuid="$1"
@@ -16,64 +19,8 @@ find_device() {
 	fi
 }
 
-# Process each configured drive entry
-process_drive() {
-	local cfg="$1"
-	local enabled uuid label mapper mount_point fstype dev
-
-	config_get_bool enabled "$cfg" enabled 0
-	[ "$enabled" -eq 1 ] || return 0
-
-	config_get uuid "$cfg" uuid
-	config_get label "$cfg" label
-	config_get mapper "$cfg" mapper
-	config_get mount_point "$cfg" mount_point
-	config_get fstype "$cfg" fstype "ext4"
-	config_get fstype "$cfg" up_pre
-	config_get fstype "$cfg" up_post
-
-	if [ -z "$mapper" ]; then
-		logger -t clevis "Error: 'mapper' name must be defined for config section '$cfg'"
-		return 1
-	fi
-
-	# Dynamically discover device path
-	dev=$(find_device "$uuid" "$label")
-
-	if [ -z "$dev" ] || [ ! -b "$dev" ]; then
-		logger -t clevis "Warning: Could not locate block device for configuration '$cfg' (UUID: $uuid / LABEL: $label)"
-		return 1
-	fi
-
-	# Check if it's already unlocked
-	if [ -b "/dev/mapper/$mapper" ]; then
-		logger -t clevis "Volume '$mapper' is already unlocked."
-		return 0
-	fi
-
-	logger -t clevis "Attempting automated Clevis unlock for $dev -> /dev/mapper/$mapper"
-
-	# Execute Clevis LUKS Unlock
-	if clevis luks unlock -d "$dev" -n "$mapper"; then
-		logger -t clevis "Successfully unlocked $dev as /dev/mapper/$mapper"
-
-		# Optional: Handle Mounting if defined
-		if [ -n "$mount_point" ]; then
-			mkdir -p "$mount_point"
-			if mount "/dev/mapper/$mapper" "$mount_point"; then
-				[ -n "${up_pre}" ] && bash -c "${up_pre}"
-				logger -t clevis "Mounted /dev/mapper/$mapper onto $mount_point"
-				[ -n "${up_post}" ] && bash -c "${up_post}"
-			else
-				logger -t clevis "Error: Failed to mount /dev/mapper/$mapper onto $mount_point"
-			fi
-		fi
-	else
-		logger -t clevis "Error: Clevis auto-unlock failed for device $dev"
-	fi
-}
-
-start_service() {
+# Run-once background task executed by procd worker instance
+worker() {
 	config_load clevis
 
 	# Simple network verification check (only block-waits if a Tang server binding might be needed)
@@ -96,32 +43,67 @@ start_service() {
 	config_foreach process_drive drive
 }
 
-close_drive() {
+# Process each configured drive entry
+process_drive() {
 	local cfg="$1"
-	local enabled mapper mount_point
-	config_get_bool enabled "$cfg" enabled 0
-	config_get mapper "$cfg" mapper
-	config_get mount_point "$cfg" mount_point
-	config_get mount_point "$cfg" down_pre
-	config_get mount_point "$cfg" down_post
+	local enabled uuid label mapper dev
 
+	config_get_bool enabled "$cfg" enabled 0
 	[ "$enabled" -eq 1 ] || return 0
 
-	[ -n "${down_pre}" ] && bash -c "${down_pre}"
+	config_get uuid "$cfg" uuid
+	config_get label "$cfg" label
+	config_get mapper "$cfg" mapper
 
-	if [ -n "$mount_point" ] && grep -q " $mount_point " /proc/mounts; then
-		logger -t clevis "Unmounting $mount_point"
-		umount "$mount_point"
+	if [ -z "$mapper" ]; then
+		logger -t clevis "Error: 'mapper' name must be defined for config section '$cfg'"
+		return 1
 	fi
+
+	dev=$(find_device "$uuid" "$label")
+
+	if [ -z "$dev" ] || [ ! -b "$dev" ]; then
+		logger -t clevis "Warning: Could not locate block device for configuration '$cfg' (UUID: $uuid / LABEL: $label)"
+		return 1
+	fi
+
+	if [ -b "/dev/mapper/$mapper" ]; then
+		logger -t clevis "Volume '$mapper' is already unlocked."
+		return 0
+	fi
+
+	logger -t clevis "Attempting automated Clevis unlock for $dev -> /dev/mapper/$mapper"
+
+	if clevis luks unlock -d "$dev" -n "$mapper"; then
+		logger -t clevis "Successfully unlocked $dev as /dev/mapper/$mapper"
+		
+		# Proactively tell blockd to check for new mountable devices
+		/sbin/block mount
+	else
+		logger -t clevis "Error: Clevis auto-unlock failed for device $dev"
+	fi
+}
+
+close_drive() {
+	local cfg="$1"
+	local enabled mapper
+
+	config_get_bool enabled "$cfg" enabled 0
+	config_get mapper "$cfg" mapper
 
 	if [ -b "/dev/mapper/$mapper" ]; then
 		logger -t clevis "Closing cryptographic mapper layer: $mapper"
 		cryptsetup close "$mapper"
 	fi
-
-	[ -n "${down_post}" ] && bash -c "${down_post}"
 }
 
+start_service() {
+	procd_open_instance "unlocker"
+	procd_set_param command /etc/init.d/clevis worker
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
 
 stop_service() {
 	config_load clevis

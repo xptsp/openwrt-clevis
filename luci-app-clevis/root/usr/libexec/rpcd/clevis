@@ -1,0 +1,33 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+case "$1" in
+	list)
+		echo '{ "status": {} }'
+		;;
+	call)
+		case "$2" in
+			status)
+				# Output a JSON array of active device mapper names
+				printf '{ "unlocked_mappers": ['
+				first=1
+				for mapper in /dev/mapper/*; do
+					[ -b "$mapper" ] || continue
+					name=$(basename "$mapper")
+					# Ignore default dmsetup devices
+					[ "$name" = "control" ] && continue
+					
+					if [ $first -eq 1 ]; then
+						first=0
+					else
+						printf ','
+					fi
+					printf '"%s"' "$name"
+				done
+				printf '] }\n'
+				;;
+		esac
+		;;
+esac
+y
