@@ -4,30 +4,45 @@
 
 case "$1" in
 	list)
-		echo '{ "status": {} }'
+		printf '{"status":{},"populate":{}}\n'
 		;;
 	call)
 		case "$2" in
 			status)
-				# Output a JSON array of active device mapper names
 				printf '{ "unlocked_mappers": ['
 				first=1
 				for mapper in /dev/mapper/*; do
 					[ -b "$mapper" ] || continue
 					name=$(basename "$mapper")
-					# Ignore default dmsetup devices
 					[ "$name" = "control" ] && continue
-					
-					if [ $first -eq 1 ]; then
-						first=0
-					else
-						printf ','
-					fi
+					if [ $first -eq 1 ]; then first=0; else printf ','; fi
 					printf '"%s"' "$name"
 				done
+				printf '] }\n'
+				;;
+			populate)
+				printf '{ "drives": ['
+				first_json=1
+				
+				# Use your optimized process loop design pattern
+				blkid | grep LUKS | sed "s|:| |g" | while read dev line; do
+					[ -b "$dev" ] || continue
+					uuid=$(echo $line | grep -oe "UUID=\"[0-9a-f\-]*\"" | cut -d\" -f 2)
+					section_name="$(echo "$uuid" | tr -cd 'a-zA-Z0-9' | cut -c1-8)"
+					if [ $first_json -eq 1 ]; then first_json=0; else printf ','; fi
+					printf '{"section":"%s","uuid":"%s","mapper":"%s"}' "$section_name" "$uuid" "luks-$section_name"
+
+					exists=$(uci -q show clevis | grep -F "uuid='$uuid'")
+					if [ -z "$exists" ]; then
+						uci set clevis."$section_name"=drive
+						uci set clevis."$section_name".enabled='1'
+						uci set clevis."$section_name".uuid="$uuid"
+						uci set clevis."$section_name".mapper="luks-$section_name"
+					fi
+				done
+				uci commit clevis
 				printf '] }\n'
 				;;
 		esac
 		;;
 esac
-y
