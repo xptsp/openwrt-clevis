@@ -4,7 +4,7 @@
 
 case "$1" in
 	list)
-		printf '{"status":{},"populate":{}}\n'
+		printf '{"status":{},"pins":{},"populate":{}}\n'
 		;;
 	call)
 		case "$2" in
@@ -20,24 +20,55 @@ case "$1" in
 				done
 				printf '] }\n'
 				;;
+
+			pins)
+				printf '{ "pins": {'
+				first_pin=1
+
+				config_load_drive() {
+					local section_name="$1"
+					local pin_type
+					config_get pin_type "$section_name" pin ""
+
+					if [ -n "$pin_type" ]; then
+						if [ $first_pin -eq 1 ]; then first_pin=0; else printf ','; fi
+						printf '"%s":"%s"' "$section_name" "$pin_type"
+					fi
+				}
+
+				if [ -f /etc/config/clevis ]; then
+					config_load clevis
+					config_foreach config_load_drive drive
+				fi
+				printf '} }\n'
+				;;
+
 			populate)
 				printf '{ "drives": ['
 				first_json=1
-				
-				# Use your optimized process loop design pattern
-				blkid | grep LUKS | sed "s|:| |g" | while read dev line; do
+				for dev in /dev/sd* /dev/nvme* /dev/mmcblk*; do
 					[ -b "$dev" ] || continue
-					uuid=$(echo $line | grep -oe "UUID=\"[0-9a-f\-]*\"" | cut -d\" -f 2)
-					section_name="$(echo "$uuid" | tr -cd 'a-zA-Z0-9' | cut -c1-8)"
-					if [ $first_json -eq 1 ]; then first_json=0; else printf ','; fi
-					printf '{"section":"%s","uuid":"%s","mapper":"%s"}' "$section_name" "$uuid" "luks-$section_name"
+					uuid=$(blkid -s UUID -o value "$dev" 2>/dev/null)
+					type=$(blkid -s TYPE -o value "$dev" 2>/dev/null)
+					
+					if [ "$type" = "crypto_LUKS" ] && [ -n "$uuid" ]; then
+						section_name="drive_$(echo "$uuid" | tr -cd 'a-zA-Z0-9' | cut -c1-8)"
+						if [ $first_json -eq 1 ]; then first_json=0; else printf ','; fi
+						printf '{"section":"%s","uuid":"%s","mapper":"%s"}' "$section_name" "$uuid" "luks-$section_name"
 
-					exists=$(uci -q show clevis | grep -F "uuid='$uuid'")
-					if [ -z "$exists" ]; then
-						uci set clevis."$section_name"=drive
-						uci set clevis."$section_name".enabled='1'
-						uci set clevis."$section_name".uuid="$uuid"
-						uci set clevis."$section_name".mapper="luks-$section_name"
+						# Extract out the target pinpoint attribute during the privileged populate scan pass
+						pin_type=$(clevis luks list -d "$dev" 2>/dev/null | grep -iE 'tang|tpm2|sss|pkcs11' | head -n1 | awk '{print $2}')
+						[ -z "$pin_type" ] && pin_type=$(clevis luks list -d "$dev" 2>/dev/null | grep -oE '[0-9]: [a-zA-Z0-9]+' | cut -d' ' -f2 | head -n1)
+						[ -z "$pin_type" ] && pin_type="tang"
+
+						exists=$(uci -q show clevis | grep -F "uuid='$uuid'")
+						if [ -z "$exists" ]; then
+							uci set clevis."$section_name"=drive
+							uci set clevis."$section_name".enabled='1'
+							uci set clevis."$section_name".uuid="$uuid"
+							uci set clevis."$section_name".mapper="$section_name"
+							uci set clevis."$section_name".pin="$pin_type"
+						fi
 					fi
 				done
 				uci commit clevis

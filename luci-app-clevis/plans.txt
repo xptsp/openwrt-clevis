@@ -1,0 +1,24 @@
+2. 🔌 Live Volume Mount & Umount Row Actions
+
+Since you already have a clickable hyperlink guiding users to the native System Mount Points page, you can go one step further. For any volume row displaying an Unlocked 🔓 badge, you can inject a custom Mount or Unmount toggle button right into that grid matrix.
+• How it works: Add an action_mount method to your RPCD backend script that triggers:bash
+mount /dev/mapper/$mapper /mnt/$mapper
+Use code with caution.
+• Why it helps: Users can safely attach or detach filesystems on the fly directly from your dashboard without leaving the page.
+
+3. 🛡️ LUKS Passphrase "Slot Management" Sub-Panel
+
+When you click the Edit modal button on a drive row, you can display a summary map of the partition's active key slots (LUKS containers have 8 slots for keys/pins).
+• How it works: The RPCD script runs cryptsetup luksDump /dev/sdXX behind the scenes.
+• Why it helps: It lets you see exactly how many keys are provisioned, which slots are occupied by Clevis bindings, and which slots are holding standard master passphrases.
+
+4. 🎛️ Automated "Backup & Restore" Header Slot Triggers
+
+If your router ever experiences flash storage corruption or needs a factory reset, your automated keys are safe inside the drive, but your specialized UCI config sections and custom hooks will be wiped out.
+• How it works: Add a header utility button called Export Configuration.
+• Why it helps: It generates a lightweight, downloadable .tar.gz bundle containing exactly /etc/config/clevis and any explicit post-mount shell script assets, allowing you to re-import your automation parameters instantly onto a fresh router build.
+
+5. 🚨 S.M.A.R.T. Drive Health Alerts
+
+For encrypted target drives that stay online 24/7, you can run a background check against the primary block device using smartctl (if available) or raw kernel sysfs error counters.
+• Why it helps: You can display a warning badge next to the status row if the underlying drive begins encountering physical hardware errors, giving you an early warning to backup your secure data before a total drive failure happens.

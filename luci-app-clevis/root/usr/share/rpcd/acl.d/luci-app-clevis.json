@@ -4,7 +4,7 @@
 		"read": {
 			"uci": [ "clevis" ],
 			"ubus": {
-				"clevis": [ "status", "populate" ]
+				"clevis": [ "status", "populate", "pins" ]
 			}
 		},
 		"write": {
