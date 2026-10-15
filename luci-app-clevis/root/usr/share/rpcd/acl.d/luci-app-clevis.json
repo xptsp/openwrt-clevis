@@ -2,15 +2,15 @@
 	"luci-app-clevis": {
 		"description": "Grant UCI and Ubus access to Clevis monitoring tools",
 		"read": {
-			"uci": [ "clevis" ],
+			"uci": [ "clevis", "fstab" ],
 			"ubus": {
-				"clevis": [ "status", "populate" ]
+				"clevis": [ "status", "mounts", "populate" ]
 			}
 		},
 		"write": {
-			"uci": [ "clevis" ],
+			"uci": [ "clevis", "fstab" ],
 			"ubus": {
-				"clevis": [ "populate" ]
+				"clevis": [ "populate", "unlock", "unlock_passphrase", "lock", "mount", "umount", "fstab_sync" ]
 			}
 		}
 	}

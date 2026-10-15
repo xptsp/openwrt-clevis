@@ -1,11 +1,3 @@
-2. 🔌 Live Volume Mount & Umount Row Actions
-
-Since you already have a clickable hyperlink guiding users to the native System Mount Points page, you can go one step further. For any volume row displaying an Unlocked 🔓 badge, you can inject a custom Mount or Unmount toggle button right into that grid matrix.
-• How it works: Add an action_mount method to your RPCD backend script that triggers:bash
-mount /dev/mapper/$mapper /mnt/$mapper
-Use code with caution.
-• Why it helps: Users can safely attach or detach filesystems on the fly directly from your dashboard without leaving the page.
-
 3. 🛡️ LUKS Passphrase "Slot Management" Sub-Panel
 
 When you click the Edit modal button on a drive row, you can display a summary map of the partition's active key slots (LUKS containers have 8 slots for keys/pins).

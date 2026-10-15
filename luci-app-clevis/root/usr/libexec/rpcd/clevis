@@ -2,12 +2,18 @@
 
 . /lib/functions.sh
 
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+export HOME="/root"
+export USER="root"
+
 case "$1" in
 	list)
-		printf '{"status":{},"populate":{}}\n'
+		# Registered ALL your application's read and write execution methods on the system bus
+		printf '{"status":{},"mounts":{},"populate":{},"unlock":{"section":"string"},"unlock_passphrase":{"mapper":"string","uuid":"string","label":"string","passphrase":"string"},"lock":{"mapper":"string"},"mount":{"mapper":"string","path":"string"},"umount":{"mapper":"string"},"fstab_sync":{"mapper":"string","uuid":"string","path":"string","enabled":"string"}}\n'
 		;;
 	call)
 		case "$2" in
+			############################################################################
 			status)
 				printf '{ "unlocked_mappers": ['
 				first=1
@@ -20,29 +26,237 @@ case "$1" in
 				done
 				printf '] }\n'
 				;;
+			############################################################################
+			mounts)
+				printf '{ "mounted_mappers": ['
+				first=1
+				for mapper in $(mount | grep /dev/mapper | awk '{print $1}' | sort | uniq); do
+					[ -b "$mapper" ] || continue
+					name=$(basename "$mapper")
+					[ "$name" = "control" ] && continue
+					
+					if [ $first -eq 1 ]; then first=0; else printf ','; fi
+					printf '"%s"' "$name"
+				done
+				printf '] }\n'
+				;;
+			############################################################################
+			unlock)
+				read -r input
+				section=$(echo "$input" | jsonfilter -e '@.section')
+				
+				if [ -z "$section" ]; then
+					printf '{"result":"failed","error":"Missing configuration section target"}\n'
+					exit 1
+				fi
+				
+				# Intelligently branch between a selective row unlock or a master global sweep!
+				if [ "$section" = "all" ]; then
+					logger -t clevis "Web dashboard master global unlock request triggered for all configured targets"
+					(
+						/etc/init.d/clevis worker &
+					) >/dev/null 2>&1
+				else
+					logger -t clevis "Web dashboard single-drive unlock request triggered for target: $section"
+					(
+						/etc/init.d/clevis unlock "$section" &
+					) >/dev/null 2>&1
+				fi
+				
+				printf '{"result":"success"}\n'
+				;;
+			############################################################################
+			unlock_passphrase)
+				read -r input
+				mapper=$(echo "$input" | jsonfilter -e '@.mapper')
+				uuid=$(echo "$input" | jsonfilter -e '@.uuid')
+				label=$(echo "$input" | jsonfilter -e '@.label')
+				passphrase=$(echo "$input" | jsonfilter -e '@.passphrase')
+				
+				if [ -z "$mapper" ] || [ -z "$passphrase" ]; then
+					printf '{"result":"failed","error":"Missing required cryptographic mapping parameters or passphrase string"}\n'
+					exit 1
+				fi
+
+				dev_node=""
+				if [ -n "$uuid" ]; then
+					dev_node=$(blkid -t UUID="$uuid" -o device 2>/dev/null)
+				elif [ -n "$label" ]; then
+					dev_node=$(blkid -t LABEL="$label" -o device 2>/dev/null)
+				fi
+
+				if [ -z "$dev_node" ] || [ ! -b "$dev_node" ]; then
+					printf '{"result":"failed","error":"Could not resolve physical underlying disk block device path node location"}\n'
+					exit 1
+				fi
+
+				if [ -b "/dev/mapper/$mapper" ]; then
+					printf '{"result":"success","message":"Volume was already unlocked"}\n'
+					exit 0
+				fi
+
+				sync && echo 3 > /proc/sys/vm/drop_caches
+				sleep 1
+
+				if printf '%s' "$passphrase" | cryptsetup luksOpen "$dev_node" "$mapper" >/dev/null 2>&1; then
+					logger -t clevis "Successfully unlocked fallback partition device $dev_node manually as /dev/mapper/$mapper"
+					
+					if [ -f /etc/config/clevis ]; then
+						config_load clevis
+						find_and_run_hooks() {
+							local cfg="$1" cm; config_get cm "$cfg" mapper
+							if [ "$cm" = "$mapper" ]; then
+								local pm; config_get pm "$cfg" pre_mount ""; [ -n "$pm" ] && eval "$pm"
+								/sbin/block mount
+								local pu; config_get pu "$cfg" post_unlock ""; [ -n "$pu" ] && eval "$pu"
+							fi
+						}
+						config_foreach find_and_run_hooks drive
+					fi
+					printf '{"result":"success"}\n'
+				else
+					printf '{"result":"failed","error":"Invalid cryptographic passphrase key signature match"}\n'
+				fi
+				;;
+			############################################################################
+			lock)
+				read -r input
+				mapper=$(echo "$input" | jsonfilter -e '@.mapper')
+				
+				if [ -z "$mapper" ]; then
+					printf '{"result":"failed","error":"Missing required mapper parameter"}\n'
+					exit 1
+				fi
+
+				# Intelligently branch between a selective row unlock or a master global sweep!
+				if [ "$mapper" = "all" ]; then
+					logger -t clevis "Web dashboard master global unlock request triggered for all configured targets"
+					(
+						/etc/init.d/clevis stop &
+					) >/dev/null 2>&1
+
+					printf '{"result":"success"}\n'
+				else
+					if [ ! -b "/dev/mapper/$mapper" ]; then
+						printf '{"result":"success","message":"Volume was already locked"}\n'
+						exit 0
+					fi
+
+					# Direct execution right to the verified service lock layer!
+					if /etc/init.d/clevis lock "$mapper" >/dev/null 2>&1; then
+						printf '{"result":"success"}\n'
+					else
+						printf '{"result":"failed","error":"Failed to execute clean teardown sequence. Filesystem remains busy."}\n'
+					fi
+				fi
+				;;
+			############################################################################
+			mount)
+				read -r input
+				mapper=$(echo "$input" | jsonfilter -e '@.mapper')
+				path=$(echo "$input" | jsonfilter -e '@.path')
+				
+				if [ -z "$mapper" ] || [ -z "$path" ] || [ ! -b "/dev/mapper/$mapper" ]; then
+					printf '{"result":"failed","error":"Target decrypted volume mapper node is offline or parameter invalid"}\n'
+					exit 1
+				fi
+				
+				mkdir -p "$path"
+				if mount "/dev/mapper/$mapper" "$path" >/dev/null 2>&1 || mountpoint -q "$path"; then
+					printf '{"result":"success"}\n'
+				else
+					printf '{"result":"failed","error":"Filesystem mount operation failed. Verify partition format layout."}\n'
+				fi
+				;;
+			############################################################################
+			umount)
+				read -r input
+				mapper=$(echo "$input" | jsonfilter -e '@.mapper')
+				
+				if [ -z "$mapper" ]; then
+					printf '{"result":"failed","error":"Missing target mapper name"}\n'
+					exit 1
+				fi
+				
+				path=$(mount | grep "/dev/mapper/$mapper " | awk '{print $3}')
+				[ -z "$path" ] && path="/mnt/$mapper"
+				
+				if ! mountpoint -q "$path"; then
+					printf '{"result":"success"}\n'
+					exit 0
+				fi
+				
+				if umount -l "$path" >/dev/null 2>&1; then
+					printf '{"result":"success"}\n'
+				else
+					printf '{"result":"failed","error":"Device busy"}\n'
+				fi
+				;;
+			############################################################################
+			fstab_sync)
+				read -r input
+				mapper=$(echo "$input" | jsonfilter -e '@.mapper')
+				uuid=$(echo "$input" | jsonfilter -e '@.uuid')
+				path=$(echo "$input" | jsonfilter -e '@.path')
+				enabled=$(echo "$input" | jsonfilter -e '@.enabled')
+				
+				if [ -z "$mapper" ]; then
+					printf '{"result":"failed","error":"Missing configuration mapper target"}\n'
+					exit 1
+				fi
+				
+				config_load fstab
+				fstab_idx=""
+				find_fstab_entry() {
+					local cfg="$1" target device
+					config_get target "$cfg" target
+					config_get device "$cfg" device
+					if [ "$target" = "$path" ] || [ "$device" = "/dev/mapper/$mapper" ]; then
+						fstab_idx="$cfg"
+					fi
+				}
+				config_foreach find_fstab_entry mount
+				
+				[ -z "$fstab_idx" ] && fstab_idx="clevis_$mapper"
+				
+				uci batch <<EOF
+					set fstab.${fstab_idx}=mount
+					set fstab.${fstab_idx}.enabled='${enabled:-1}'
+					set fstab.${fstab_idx}.device='/dev/mapper/${mapper}'
+					set fstab.${fstab_idx}.target='${path:-/mnt/}${mapper}'
+					set fstab.${fstab_idx}.options='noatime,rw'
+					set fstab.${fstab_idx}.uuid='${uuid}'
+					commit fstab
+EOF
+				printf '{"result":"success"}\n'
+				;;
+			############################################################################
 			populate)
 				printf '{ "drives": ['
 				first_json=1
-				
-				# Use your optimized process loop design pattern
-				blkid | grep LUKS | sed "s|:| |g" | while read dev line; do
+				for dev in /dev/sd* /dev/nvme* /dev/mmcblk*; do
 					[ -b "$dev" ] || continue
-					uuid=$(echo $line | grep -oe "UUID=\"[0-9a-f\-]*\"" | cut -d\" -f 2)
-					section_name="$(echo "$uuid" | tr -cd 'a-zA-Z0-9' | cut -c1-8)"
-					if [ $first_json -eq 1 ]; then first_json=0; else printf ','; fi
-					printf '{"section":"%s","uuid":"%s","mapper":"%s"}' "$section_name" "$uuid" "luks-$section_name"
+					uuid=$(blkid -s UUID -o value "$dev" 2>/dev/null)
+					type=$(blkid -s TYPE -o value "$dev" 2>/dev/null)
+					
+					if [ "$type" = "crypto_LUKS" ] && [ -n "$uuid" ]; then
+						section_name="drive_$(echo "$uuid" | tr -cd 'a-zA-Z0-9' | cut -c1-8)"
+						if [ $first_json -eq 1 ]; then first_json=0; else printf ','; fi
+						printf '{"section":"%s","uuid":"%s","mapper":"%s"}' "$section_name" "$uuid" "luks-$section_name"
 
-					exists=$(uci -q show clevis | grep -F "uuid='$uuid'")
-					if [ -z "$exists" ]; then
-						uci set clevis."$section_name"=drive
-						uci set clevis."$section_name".enabled='1'
-						uci set clevis."$section_name".uuid="$uuid"
-						uci set clevis."$section_name".mapper="luks-$section_name"
+						exists=$(uci -q show clevis | grep -F "uuid='$uuid'")
+						if [ -z "$exists" ]; then
+							uci set clevis."$section_name"=drive
+							uci set clevis."$section_name".enabled='1'
+							uci set clevis."$section_name".uuid="$uuid"
+							uci set clevis."$section_name".mapper="luks-$section_name"
+						fi
 					fi
 				done
 				uci commit clevis
 				printf '] }\n'
 				;;
+			############################################################################
 		esac
 		;;
 esac
