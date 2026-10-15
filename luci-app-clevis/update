@@ -1,0 +1,6 @@
+#!/bin/bash
+cd htdocs
+find -type f -exec scp {} root@tester.lan:/www/{} \;
+cd ../root
+find -type f -exec scp {} root@tester.lan:/{} \;
+ssh root@tester.lan /etc/init.d/rpcd reload

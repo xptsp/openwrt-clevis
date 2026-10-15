@@ -20,34 +20,27 @@ return L.view.extend({
 				object: 'clevis',
 				method: 'status',
 				expect: { unlocked_mappers: [] }
-			})(),
-			L.rpc.declare({
-				object: 'clevis',
-				method: 'pins',
-				expect: { pins: [] }
 			})()
 		]);
 	},
 
 	render: function(data) {
 		// Properly unpack Promise.all sequential indices
-		// Properly unpack Promise.all sequential indices
 		var form = data[0];
-		var unlockedMappers = data[1] || [];
-		var pinMappings = (data[2] && data[2].pins) ? data[2].pins : {};
+		var unlockedMappers = data[1]; 
 		var m, s, o;
 
 		m = new form.Map('clevis', _('Clevis Decryption'),
-			_('Configure automated cryptographic volume decryption utilizing Clevis metadata stanzas. Once unlocked, virtual devices appear inside') +
-			' <strong>/dev/mapper/</strong> ' + _('and can be natively assigned to mount paths under') +
+			_('Configure automated cryptographic volume decryption utilizing Clevis metadata stanzas. Once unlocked, virtual devices appear inside') + 
+			' <strong>/dev/mapper/</strong> ' + _('and can be natively assigned to mount paths under') + 
 			' <a href="/cgi-bin/luci/admin/system/mounts">' + _('System ➔ Mount Points') + '</a>.');
 
 		// Global Timeout Config using TypedSection
 		s = m.section(form.TypedSection, 'global', _('Global Settings'));
 		s.anonymous = true;
 		s.addremove = false;
-
-		o = s.option(form.Value, 'network_timeout', _('Network Interface Timeout'),
+		
+		o = s.option(form.Value, 'network_timeout', _('Network Interface Timeout'), 
 			_('Seconds to block-wait for connectivity prior to firing pinning operations. Ideal for remote Tang hook definitions. (0 to disable)'));
 		o.datatype = 'uinteger';
 		o.default = '30';
@@ -58,18 +51,18 @@ return L.view.extend({
 		o.inputstyle = 'apply';
 		o.onclick = L.bind(function(ev) {
 			L.showModal(null, [ E('p', { 'class': 'spinning' }, _('Scanning hardware block layers and generating partition profile registries...')) ]);
-
+			
 			this.rpcClevisPopulate().then(L.bind(function(result) {
 				L.hideModal();
 				L.showModal(_('Scan Complete'), [
 					E('p', _('Encrypted target drives have been successfully discovered and appended to your configuration settings!')),
-					E('div', { 'class': 'right' }, [
-						E('button', { 'class': 'btn cbi-button-action primary', 'click': function() { L.hideModal(); window.location.reload(); } }, _('OK'))
+					E('div', { 'class': 'right' }, [ 
+						E('button', { 'class': 'btn cbi-button-action primary', 'click': function() { L.hideModal(); window.location.reload(); } }, _('OK')) 
 					])
 				]);
-			}, this)).catch(function(err) {
-				L.hideModal();
-				L.ui.addNotification(null, E('p', { 'class': 'notice danger' }, _('Failed to discover storage targets: ') + (err.message || err)));
+			}, this)).catch(function(err) { 
+				L.hideModal(); 
+				L.ui.addNotification(null, E('p', { 'class': 'notice danger' }, _('Failed to discover storage targets: ') + (err.message || err))); 
 			});
 		}, this);
 
@@ -81,6 +74,8 @@ return L.view.extend({
 		// LIVE STATUS BADGE COLUMN
 		o = s.option(form.DummyValue, '_status', _('Status'));
 		o.modalonly = false;
+
+		// Step A: Calculate the true status state string for this row section
 		o.cfgvalue = function(section_id) {
 			var mapperName = L.uci.get('clevis', section_id, 'mapper');
 			if (!mapperName) {
@@ -88,6 +83,8 @@ return L.view.extend({
 			}
 			return (unlockedMappers.indexOf(mapperName) !== -1) ? 'unlocked' : 'locked';
 		};
+
+		// Step B: Direct the table renderer on exactly how to display that value state string
 		o.textvalue = function(section_id) {
 			var state = this.cfgvalue(section_id);
 
@@ -98,31 +95,6 @@ return L.view.extend({
 			} else {
 				return E('em', _('Unsaved Profile'));
 			}
-		};
-
-		// COLUMN 2: EXPLICIT PIN TYPE BADGE COLUMN
-		o = s.option(form.DummyValue, '_pin_type', _('Pin Type'));
-		o.modalonly = false;
-		o.cfgvalue = function(section_id) {
-			// Pull either our runtime dynamic status results map OR our persistent saved UCI configuration fields natively!
-			return pinMappings[section_id] || L.uci.get('clevis', section_id, 'pin') || 'unknown';
-		};
-		o.textvalue = function(section_id) {
-			var pin = this.cfgvalue(section_id);
-			var upperPin = pin.toUpperCase();
-
-			if (pin === 'tang') {
-				return E('span', { 'class': 'label', 'style': 'display:inline-block; background-color:#2563eb; color:#fff;' }, '🌐 ' + upperPin);
-			} else if (pin === 'tpm2' || pin === 'tpm1') {
-				return E('span', { 'class': 'label', 'style': 'display:inline-block; background-color:#16a34a; color:#fff;' }, '🛡️ ' + upperPin);
-			} else if (pin === 'sss') {
-				return E('span', { 'class': 'label', 'style': 'display:inline-block; background-color:#9333ea; color:#fff;' }, '🔑 ' + upperPin);
-			} else if (pin === 'pkcs11') {
-				return E('span', { 'class': 'label', 'style': 'display:inline-block; background-color:#ea580c; color:#fff;' }, '💳 ' + upperPin);
-			} else if (pin === 'unknown') {
-				return E('span', { 'class': 'label danger', 'style': 'display:inline-block;' }, _('Unavailable'));
-			}
-			return E('span', { 'class': 'label' }, upperPin);
 		};
 
 		// Toggle Profile State
@@ -144,12 +116,12 @@ return L.view.extend({
 		// Custom text fields for User hooks (exposed on the Edit modal sub-menu overlay)
 		o = s.option(form.Value, 'pre_mount', _('Pre-Mount Hook'),
 			_('Shell commands to execute exactly AFTER decryption succeeds, but BEFORE the filesystem is attached.'));
-		o.modalonly = true;
+		o.modalonly = true; 
 		o.rmempty = true;
 
 		o = s.option(form.Value, 'post_unlock', _('Post-Unlock Hook'),
 			_('Shell commands to execute exactly AFTER the block mount command completes.'));
-		o.modalonly = true;
+		o.modalonly = true; 
 		o.rmempty = true;
 
 		return m.render();
