@@ -25,7 +25,7 @@ define Package/clevis
   CATEGORY:=Utilities
   TITLE:=Automated Encryption Framework
   URL:=https://github.com/latchset/clevis
-  DEPENDS:=+jose +bash +coreutils +curl +luksmeta +cryptsetup +jansson
+  DEPENDS:=+jose +bash +coreutils +curl +jansson
 endef
 
 define Package/clevis-luks

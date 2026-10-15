@@ -18,12 +18,21 @@ Official OpenWrt feeds lack an upstream package for Clevis because it heavily re
 - Tamper-Resistant Routers (Physical Theft Protection): Protect configurations, wireguard keys, or local logs on devices deployed in unmanaged, physically vulnerable locations (e.g., remote cell towers, public kiosks, field kits). If the device is stolen and disconnected from the local network, the data remains cryptographically locked.
 - Automated Redundancy: Leverage network-bound disk encryption (NBDE) via Tang servers or hardware keys via TPM 2.0 to ensure your head-less OpenWrt hardware boots unattended after a power outage, completely avoiding manual SSH passcode entry.
 
+## Available Packages
+
+- **clevis** - This package provides the decoding pins (except for TPM2).  Requires **jose**, **bash**, **coreutils**, **curl**, and **jansson**.
+- **clevis-luks** - This package provides the command starting **clevis-luks**.  Requires **clevis**, **cryptsetup** and **luksmeta**.
+- **clevis-tpm2** - This package provides TPM2 pins.  Requires **clevis**, **tpm2-tools**, **kmod-tpm**, and **kmod-tpm-tis**.
+- **luksmeta** - This package provides a C library and command-line utility used to store and manage pre-unlock metadata inside the LUKSv1 header gap.  Requires **cryptsetup**, **libdevmapper**, and **libuuid**.
+
+Packages **tpm2-tools** and **tpm2-tss** are available for compilation at [https://github.com/justarandomgeek/tpm2-packages](https://github.com/justarandomgeek/tpm2-packages), but are provided on the release page for these tools.
+
 ## Screenshots
 
 ![screenshot_1.webp](https://github.com/xptsp/openwrt-clevis/blob/main/screenshot_1.webp?raw=true)
-
+---
 ![screenshot_2.webp](https://github.com/xptsp/openwrt-clevis/blob/main/screenshot_2.webp?raw=true)
-
+---
 ![screenshot_3.webp](https://github.com/xptsp/openwrt-clevis/blob/main/screenshot_3.webp?raw=true)
-
+---
 ![screenshot_4.webp](https://github.com/xptsp/openwrt-clevis/blob/main/screenshot_4.webp?raw=true)
