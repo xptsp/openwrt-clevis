@@ -1,17 +1,17 @@
 {
 	"luci-app-clevis": {
-		"description": "Grant UCI and Ubus access to Clevis monitoring tools",
+		"description": "Grant access to cryptographic key slot management routines",
 		"read": {
-			"uci": [ "clevis", "fstab" ],
 			"ubus": {
-				"clevis": [ "status", "mounts", "populate" ]
-			}
+				"clevis": [ "status", "mounts", "populate", "slots" ]
+			},
+			"uci": [ "clevis", "fstab" ]
 		},
 		"write": {
-			"uci": [ "clevis", "fstab" ],
 			"ubus": {
-				"clevis": [ "populate", "unlock", "unlock_passphrase", "lock", "mount", "umount", "fstab_sync" ]
-			}
+				"clevis": [ "unlock", "unlock_passphrase", "lock", "mount", "umount", "fstab_sync", "slot_add", "slot_wipe" ]
+			},
+			"uci": [ "clevis", "fstab" ]
 		}
 	}
 }

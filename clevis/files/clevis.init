@@ -136,7 +136,7 @@ process_drive() {
 		# Aligned processing hook variable assignments
 		if [ -n "${pre_mount}" ]; then
 			logger -t clevis "Executing custom pre-mount hook for section '$cfg'..."
-			eval "${pre_mount}"
+			( eval "${pre_mount}" )
 		fi
 
 		# Proactively tell blockd to check for new mountable devices
@@ -144,7 +144,7 @@ process_drive() {
 
 		if [ -n "${post_mount}" ]; then
 			logger -t clevis "Executing custom post-unlock hook for section '$cfg'..."
-			eval "${post_mount}"
+			( eval "${post_mount}" )
 		fi
 	else
 		logger -t clevis "Error: Clevis auto-unlock failed for device ${dev}"
@@ -195,7 +195,7 @@ close_drive() {
 		# 1. Execute Safe Pre-Unmount Task Hooks (e.g. Stop Samba, NFS, Docker Containers)
 		if [ -n "${pre_unmount}" ] && [ -n "${mount_path}" ]; then
 			logger -t clevis "Executing custom pre-unmount hook for section '${cfg}'..."
-			eval "${pre_unmount}"
+			( eval "${pre_unmount}" )
 			sleep 1
 		fi
 
@@ -226,7 +226,7 @@ close_drive() {
 		# 3. Execute Custom Post-Unmount Task Hooks
 		if [ -n "${post_unmount}" ]; then
 			logger -t clevis "Executing custom post-unmount hook for section '${cfg}'..."
-			eval "${post_unmount}"
+			( eval "${post_unmount}" )
 			sleep 1
 		fi
 
@@ -270,10 +270,16 @@ lock() {
 }
 
 start_service() {
+	# Check if the global daemon hook configurations are fully mapped
+	config_load clevis
+
 	procd_open_instance "unlocker"
-	procd_set_param command /etc/init.d/clevis worker
+	# Execute via the standard system wrapper shell to allow proper forking environments
+	procd_set_param command /bin/sh -c "/etc/init.d/clevis worker"
 	procd_set_param stdout 1
 	procd_set_param stderr 1
+	# Ensures the daemon frees system memory loops if it encounters a critical thread drop
+	procd_set_param respawn 0 0 0
 	procd_close_instance
 }
 

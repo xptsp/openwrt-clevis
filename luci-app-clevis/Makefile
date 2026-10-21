@@ -5,7 +5,7 @@ LUCI_DEPENDS:=+clevis +clevis-luks +blkid
 LUCI_PKGARCH:=all
 
 PKG_NAME:=luci-app-clevis
-PKG_VERSION:=1.2.0
+PKG_VERSION:=1.3.0
 PKG_RELEASE:=1
 PKG_LICENSE:=GPL-3.0-or-later
 
@@ -43,23 +43,15 @@ if [ -n "$${IPKG_INSTROOT}" ]; then
 	exit 0
 fi
 
-# Dynamically locate the exact index position tracking your service name
-idx=0
-while true; do
-	init_name=$$(uci -q get ucitrack.@service[$${idx}].init)
-	[ -z "$${init_name}" ] && break
-
-	if [ "$${init_name}" = "clevis" ]; then
-		# Delete the target block configuration permanently from flash memory
-		uci delete ucitrack.@service[$${idx}]
-		uci commit ucitrack
-		break
-	fi
-	idx=$$((idx + 1))
-done
+# Direct removal of the explicitly named section to ensure clean uninstalls
+if uci -q get ucitrack.clevis >/dev/null; then
+	uci delete ucitrack.clevis
+	uci commit ucitrack
+fi
 
 /etc/init.d/rpcd reload
 exit 0
 endef
 
 # call BuildPackage - OpenWrt buildroot signature
+$(eval $(call BuildPackage,luci-app-clevis))
