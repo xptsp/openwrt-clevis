@@ -106,6 +106,22 @@ case "$1" in
 						/etc/init.d/clevis worker &
 					) >/dev/null 2>&1
 				else
+					config_load clevis
+					config_get uuid "${section}" uuid ""
+					config_get label "${section}" label ""
+
+					dev_node=""
+					if [ -n "$uuid" ]; then
+						dev_node=$(blkid -t UUID="$uuid" -o device 2>/dev/null)
+					elif [ -n "$label" ]; then
+						dev_node=$(blkid -t LABEL="$label" -o device 2>/dev/null)
+					fi
+
+					if [ -z "$dev_node" ] || [ ! -b "$dev_node" ]; then
+						printf '{"result":"failed","error":"Could not resolve physical underlying disk block device path node location"}\n'
+						exit 1
+					fi
+
 					logger -t clevis "Web dashboard single-drive unlock request triggered for target: $section"
 					(
 						/etc/init.d/clevis unlock "$section" &
@@ -281,7 +297,6 @@ EOF
 				;;
 			############################################################################
 			slots)
-				read -r input
 				section_id=$(echo "$input" | jsonfilter -e '@.section_id' -e '@.mapper' 2>/dev/null)
 
 				config_load clevis
@@ -310,9 +325,6 @@ EOF
 						fi
 					fi
 				fi
-
-				# Absolute testing override constraint safety checkpoint
-				[ -z "$dev_node" ] && [ -b "/dev/sdb1" ] && dev_node="/dev/sdb1"
 
 				if [ -z "$dev_node" ] || [ ! -b "$dev_node" ]; then
 					printf '{ "slots": [] }\n'

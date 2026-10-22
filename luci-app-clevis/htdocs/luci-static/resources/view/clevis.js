@@ -175,7 +175,7 @@ return L.view.extend({
 										clearInterval(pollInterval);
 										L.hideModal();
 										viewContext.unlockedMappers = status || [];
-										L.ui.addNotification(null, E('p', _('Success: Master background sweeps complete. Grid states updated.')), 'info', 10000);
+										L.ui.addNotification(null, E('p', _('Success: ') + _('Master background sweeps complete. Grid states updated.')), 'info', 10000);
 										m.render();
 									}
 								});
@@ -198,7 +198,7 @@ return L.view.extend({
 					
 					L.rpc.declare({ object: 'clevis', method: 'lock', params: [ 'mapper' ] })('all').then(function(res) {
 						L.hideModal();
-						L.ui.addNotification(null, E('p', _('Success: Master teardown complete. All volume arrays safely closed.')), 'info', 7000);
+						L.ui.addNotification(null, E('p', _('Success: ') + _('Master teardown complete. All volume arrays safely closed.')), 'info', 7000);
 						L.rpc.declare({ object: 'clevis', method: 'status', expect: { unlocked_mappers: [] } })().then(function(status) {
 							viewContext.unlockedMappers = status || [];
 							m.render();
@@ -695,7 +695,7 @@ return L.view.extend({
 							L.hideModal(); // Clear full-screen modal blocker on response
 							
 							if (res && res.result === 'success') {
-								L.ui.addNotification(null, E('p', _('Success: The secure volume partition has been unmounted successfully.')), 'info', 7000);
+								L.ui.addNotification(null, E('p', _('Success: ') + _('The secure volume partition has been unmounted successfully.')), 'info', 7000);
 							} else {
 								L.ui.addNotification(null, E('p', _('Failure: ') + (res.error || _('Device busy.'))), 'danger');
 							}
@@ -719,7 +719,7 @@ return L.view.extend({
 							L.hideModal(); // Clear full-screen modal blocker on response
 							
 							if (res && res.result === 'success') {
-								L.ui.addNotification(null, E('p', _('Success: Teardown hooks executed and cryptographic partition safely locked.')), 'info', 7000);
+								L.ui.addNotification(null, E('p', _('Success: ') + _('Teardown hooks executed and cryptographic partition safely locked.')), 'info', 7000);
 							} else {
 								L.ui.addNotification(null, E('p', _('Failure: ') + (res.error || _('Could not close device.'))), 'danger');
 							}
@@ -748,7 +748,7 @@ return L.view.extend({
 						viewContext.rpcVolumeMount(mapperName, targetPath).then(function(res) {
 							L.hideModal(); // Clear full-screen modal blocker on response
 							if (res && res.result === 'success') {
-								L.ui.addNotification(null, E('p', _('Success: Filesystem mounted cleanly at ') + targetPath), 'info', 7000);
+								L.ui.addNotification(null, E('p', _('Success: ') + _('Filesystem mounted cleanly at ') + targetPath), 'info', 7000);
 							} else {
 								L.ui.addNotification(null, E('p', _('Failure: ') + (res.error || _('Mount processing error.'))), 'danger');
 							}
@@ -775,7 +775,7 @@ return L.view.extend({
 							ev.target.classList.remove('spinning');
 							
 							if (res && res.result === 'success') {
-								L.ui.addNotification(null, E('p', _('Success: Teardown hooks executed and cryptographic partition safely locked.')), 'info', 7000);
+								L.ui.addNotification(null, E('p', _('Success: ') + _('Teardown hooks executed and cryptographic partition safely locked.')), 'info', 7000);
 							} else {
 								ev.target.disabled = false;
 								L.ui.addNotification(null, E('p', _('Failure: ') + (res.error || _('Could not close device.'))), 'danger');
@@ -841,7 +841,7 @@ return L.view.extend({
 										viewContext.rpcClevisUnlockPassphrase(mapperName, u, l, typedPassword).then(function(fallbackRes) {
 											btnEl.classList.remove('spinning');
 											if (fallbackRes && fallbackRes.result === 'success') {
-												L.ui.addNotification(null, E('p', _('Success: Cryptographic partition manually unlocked via passphrase entry!')), 'info', 10000);
+												L.ui.addNotification(null, E('p', _('Success: ') + _('Cryptographic partition manually unlocked via passphrase entry!')), 'info', 10000);
 												
 												L.rpc.declare({ object: 'clevis', method: 'status', expect: { unlocked_mappers: [] } })().then(function(status) {
 													viewContext.unlockedMappers = status || [];
@@ -873,7 +873,7 @@ return L.view.extend({
 											L.hideModal(); // Clear full-screen modal blocker on success
 											btnEl.classList.remove('spinning');
 											viewContext.unlockedMappers = status || [];
-											L.ui.addNotification(null, E('p', _('Success: Cryptographic partition successfully unlocked over the network!')), 'info', 10000);
+											L.ui.addNotification(null, E('p', _('Success: ') + _('Cryptographic partition successfully unlocked over the network!')), 'info', 10000);
 											m.render();
 										} else if (checks >= 6) {
 											clearInterval(pollInterval);
@@ -882,6 +882,12 @@ return L.view.extend({
 										}
 									});
 								}, 1000);
+							} else if (res && res.result === 'no_device') {
+								clearInterval(pollInterval);
+								L.hideModal(); // Clear full-screen modal blocker on success
+								btnEl.classList.remove('spinning');
+								L.ui.addNotification(null, E('p',  _('Failure: ') + _('Could not resolve physical underlying disk block device path node location'), 'danger', 10000));
+								m.render();
 							} else {
 								promptManualPassphraseModal();
 							}
